@@ -861,7 +861,25 @@ function stopCamera(message='Camera off'){startVersion++;cameraState='off';if(st
 async function startCamera(){if(cameraState==='ready'){stopCamera();return;}if(cameraState==='starting')return;const version=++startVersion;cameraState='starting';cameraButton.disabled=true;cameraButton.querySelector('span').textContent='Preparing…';status('Loading hand tracking…');try{if(!isSecureContext||!navigator.mediaDevices?.getUserMedia)throw new Error('Open via HTTPS or localhost');
   // Load all model bytes from this Site; no CDN or remote camera upload at runtime.
   const mp=await import('./vendor/vision_bundle.mjs');const files=await mp.FilesetResolver.forVisionTasks(new URL('./vendor/wasm',import.meta.url).href);
-  recognizer=await mp.GestureRecognizer.createFromOptions(files,{baseOptions:{modelAssetPath:new URL('./gesture_recognizer.task',import.meta.url).href,delegate:'CPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.45,minHandPresenceConfidence:.45,minTrackingConfidence:.45});
+
+  for (const delegate of ['GPU', 'CPU']) {
+  try {
+    recognizer = await mp.GestureRecognizer.createFromOptions(files, {
+      baseOptions: {
+        modelAssetPath: new URL('./gesture_recognizer.task', import.meta.url).href,
+        delegate
+      },
+      runningMode: 'VIDEO',
+      numHands: 2,
+      minHandDetectionConfidence: .45,
+      minHandPresenceConfidence: .45,
+      minTrackingConfidence: .45
+    });
+    break;
+  } catch (error) {
+    if (delegate === 'CPU') throw error;
+  }
+}
   if(version!==startVersion){recognizer?.close();recognizer=null;return;}
   status('Please allow camera access');const requested=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30}}});
   if(version!==startVersion){requested.getTracks().forEach(t=>t.stop());return;}stream=requested;video.srcObject=stream;await video.play();if(version!==startVersion)return;
