@@ -831,11 +831,13 @@ class SprawlScene {
       c.save();c.globalAlpha=grow;for(let i=0;i<75;i++){const a=i*2.39996+age*.035,rr=radius*Math.sqrt((i+.5)/75)*.88,xx=orb.x+Math.cos(a)*rr,yy=oy+Math.sin(a)*rr*.96;c.fillStyle='rgba(223,245,255,'+(.12+(i%5)*.06)+')';c.beginPath();c.arc(xx,yy,(.5+(i%3)*.35)/Math.sqrt(this.zoom),0,TAU);c.fill();}c.restore();
       this.drawGlassShell(orb.x,oy,radius,grow,true);
     }
+
     this.drawIceShards(dt);
     for(const tip of this.tips){c.fillStyle='rgba(235,241,246,.65)';c.beginPath();c.arc(tip.x,tip.y,1.4/Math.sqrt(this.zoom),0,TAU);c.fill();}
     if(!this.segments.length&&!this.archives.length&&!this.orbs.length&&!this.shards.length){c.strokeStyle='rgba(233,239,248,.35)';c.lineWidth=1/this.zoom;for(let i=0;i<6;i++){const a=i*TAU/6;c.beginPath();c.moveTo(0,0);c.lineTo(Math.cos(a)*22,Math.sin(a)*22);c.stroke();}}
     c.restore();
   }
+    
 }
 
 // 3. Camera and interface
