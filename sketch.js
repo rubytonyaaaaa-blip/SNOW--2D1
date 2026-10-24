@@ -1,5 +1,5 @@
 // SNOW BLOOM — single application file
-// BODY V6 — calm vertical snowfall on entry; upright forearms and icicles retained
+// BODY V8 — five halo rings; independent downward-index icicles; original arm-cross crystals
 // 1. Gesture controller
 // Pure interaction controller. Coordinates are normalized and mirrored once in sketch.js.
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -32,6 +32,19 @@ function handPose(h) {
   return {gesture:shape!=='None'?shape:label,shape,extended,ratio:d(4,8)/size};
 }
 
+// Hand-only directional detector. No body landmarks or gesture class label required.
+function twoIndicesDown(hands){
+  return hands.length===2&&hands.every(h=>{
+    const p=h.points,a=h.aspect||4/3;
+    if(!p||p.length!==21||!p.every(q=>Number.isFinite(q.x)&&Number.isFinite(q.y)))return false;
+    const d=(i,j)=>Math.hypot((p[i].x-p[j].x)*a,p[i].y-p[j].y);
+    const reach=d(5,8),chain=d(5,6)+d(6,7)+d(7,8),size=Math.max(.025,d(0,9));
+    const down=(p[8].y-p[5].y)/Math.max(.001,reach)>.55;
+    const straight=reach>size*.60&&reach/Math.max(.001,chain)>.75;
+    const others=[12,16,20].filter(t=>d(t,t-3)>reach*.72&&d(t,0)>d(t-2,0)*1.08).length;
+    return down&&straight&&others<=1;
+  });
+}
 class SnowController {
   constructor(onEvent = () => {}) {
     this.onEvent = onEvent;
@@ -616,7 +629,7 @@ class SnowArtwork {
 // 3. Sprawl: bounded world-space crystal growth, isolated gesture routing.
 class SprawlScene {
   constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.segments=[];this.archives=[];this.tips=[];this.links=[];this.crystals=[];this.orbs=[];this.shards=[];this.burst=null;this.effect='none';this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;this.okSince=null;this.okLatched=false;this.okRelease=null;this.zoom=1;this.center={x:0,y:0};this.paused=false;this.drive=0;this.active=0;this.group=0;this.lastSeen=-Infinity;this.contact=false;this.dualSince=null;this.dualFired=false;this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.time=0;this.acc=0;this.turn=0;this.wrist=null;this.notice=()=>{};}
-  resetInput(){this.drive=0;this.contact=false;this.dualSince=null;this.dualFired=false;this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.wrist=null;this.turn=0;this.growArmed=false;this.pinchSince=null;this.okSince=null;this.okLatched=false;this.okRelease=null;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;}
+  resetInput(){this.downSince=null;this.drive=0;this.contact=false;this.dualSince=null;this.dualFired=false;this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.wrist=null;this.turn=0;this.growArmed=false;this.pinchSince=null;this.okSince=null;this.okLatched=false;this.okRelease=null;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;}
   selectEffect(effect,force=false){
     if(!force&&this.effect===effect)return;
     this.effect=effect;this.icicleCover=null;this.segments=[];this.archives=[];this.tips=[];this.links=[];this.orbs=[];this.shards=[];this.burst=null;
@@ -628,6 +641,19 @@ class SprawlScene {
   toggle(){if(!this.paused)this.savedDrive=this.drive||this.savedDrive||.8;this.paused=!this.paused;if(!this.paused&&this.active)this.drive=this.savedDrive||.8;this.notice(this.paused?'Growth paused':'Growth resumed','Use Pause to pause or resume');}
   process(hands,now){
     this.inputSource='hands';
+    if(this.effect==='icicles')this.drive=0;
+    // Reserve downward pointing before the ordinary two-finger connection route.
+    if(twoIndicesDown(hands)){
+      if(this.downSince==null)this.downSince=now;
+      this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.pinchSince=null;this.okSince=null;this.fistSince=null;
+      if(now-this.downSince>=280){
+        if(this.effect!=='icicles'||!this.icicleCover){this.selectEffect('icicles',true);this.active=++this.group;this.startIcicles();}
+        this.tips=[];this.drive=.9;this.turn=0;this.paused=false;
+        this.notice('Icicles growing from above','Two index fingers down · Hold to lengthen');
+      }else this.notice('Icicles ready','Hold both index fingers pointing down');
+      return;
+    }
+    this.downSince=null;
     // A missed video frame must not erase the seed or an ongoing pinch.
     if(!hands.length){this.fistSince=null;this.wrist=null;this.turn*=.8;this.pinchSince=null;this.okSince=null;if(this.okRelease===null)this.okRelease=now;if(now-this.okRelease>500)this.okLatched=false;return;}
     this.lastSeen=now;const poses=hands.map(handPose);
@@ -814,7 +840,7 @@ class SprawlScene {
     this.icicleCover={progress:0,cache:null};
   }
   drawIcicles(dt){
-    const f=this.icicleCover;if(!f||this.effect!=='curtain')return;
+    const f=this.icicleCover;if(!f||this.effect!=='icicles')return;
     if(!this.paused&&this.drive>0)f.progress=Math.min(5,f.progress+dt);
     const {w,h}=this.dimensions(),c=this.ctx;
     if(!f.cache||f.w!==w||f.h!==h){
@@ -1070,18 +1096,24 @@ class BodyInteractions {
     this.halo=mix(this.halo,active?1:0,1-Math.exp(-dt*3.5));
     if(this.halo<.01)return;
     const c=artwork.ctx,x=artwork.cx,y=artwork.cy;
-    const base=Math.min(artwork.R*1.5,Math.min(artwork.w,artwork.h)*.36),time=artwork.reducedMotion?0:now*.00012;
+    const base=Math.min(artwork.R*1.5,Math.min(artwork.w,artwork.h)*.30),time=artwork.reducedMotion?0:now*.00012;
     c.save();
     const glow=c.createRadialGradient(x,y,base*.65,x,y,base*1.3);
     glow.addColorStop(0,'rgba(186,227,255,0)');glow.addColorStop(.55,'rgba(202,225,255,'+this.halo*.10+')');glow.addColorStop(1,'rgba(217,199,255,0)');
     c.fillStyle=glow;c.fillRect(x-base*1.3,y-base*1.3,base*2.6,base*2.6);
-    for(let ring=0;ring<2;ring++)for(let i=0;i<60;i++){
-      const a=i/60*TAU+(ring?time:-time),r=base*(1+ring*.24+.025*Math.sin(i*.7+time*3));
-      artwork.flake(x+Math.cos(a)*r,y+Math.sin(a)*r,4+(i%4)*1.6,this.halo*(.38+(i%5)*.1),a+time,'224,238,255',i%3);
+    for(let ring=0;ring<5;ring++){
+      const count=48+ring*12,rotation=(ring%2?time:-time)*(1-ring*.1),radius=base*(.72+ring*.2);
+      c.beginPath();c.arc(x,y,radius,0,TAU);c.lineWidth=.65;
+      c.strokeStyle='rgba(220,242,255,'+this.halo*(.07+ring*.008)+')';c.stroke();
+      for(let i=0;i<count;i++){
+        const a=i/count*TAU+rotation,r=radius+base*.012*Math.sin(i*.7+time*3+ring);
+        artwork.flake(x+Math.cos(a)*r,y+Math.sin(a)*r,3.1+(i%4)*1.05,this.halo*(.25+(i%5)*.085),a+time,'224,238,255',i%3);
+      }
     }
     c.restore();
   }
   process(hands,now){
+    if(controller.state.scene==='sprawl'&&twoIndicesDown(hands)){this.stable('',now);return false;}
     if(!this.enabled)return false;
     const s=controller.state,p=this.pose;
     if(cameraState!=='ready'||!p||now-this.lastGood>500){
@@ -1156,32 +1188,25 @@ class BodyInteractions {
         crossDirections=[Math.atan2(u.y,u.x*aspect),Math.atan2(v.y,v.x*aspect)];
       }
     }
-    const fingers=hands.length===2&&hands.every(h=>{const pose=handPose(h);return pose.extended[0]&&pose.extended.slice(1).filter(Boolean).length<=1;});
-    if(!special&&fingers){
-      const down=hands.every(h=>{const a=h.points[5],b=h.points[8],dx=(b.x-a.x)*aspect,dy=b.y-a.y;return dy/Math.max(.001,Math.hypot(dx,dy))>.62;});
-      if(down)special='curtain';
-    }
     if(!special){this.stable('',now);if(sprawl.inputSource==='body')sprawl.drive=0;return false;}
     if(!this.stable(special,now))return true; // 等待稳定期间不误触原来的双食指连接。
     this.lastSpecial=now;
     if(this.latched!==special||sprawl.effect!==special){
       this.latched=special;sprawl.selectEffect(special,true);sprawl.active=++sprawl.group;
-      if(special==='curtain')sprawl.startIcicles();
-      const origins=special==='curtain'?hands.map(h=>h.points[8]):[crossOrigin];
+      const origins=[crossOrigin];
       for(const origin of origins){
         const q=sprawl.world(origin);
         for(let i=0;i<6;i++){const a=i*TAU/6-Math.PI/2;sprawl.add(q,{x:q.x+Math.cos(a)*18,y:q.y+Math.sin(a)*18},0);}
       }
-      const directions=special==='curtain'?[Math.PI/2,Math.PI/2]:crossDirections;
+      const directions=crossDirections;
       directions.forEach((a,i)=>{
-        const q=sprawl.world(special==='curtain'?origins[i]:origins[0]);
+        const q=sprawl.world(origins[0]);
         for(const offset of [-.16,0,.16])sprawl.tips.push({x:q.x,y:q.y,a:a+offset,age:0,group:sprawl.active,depth:0});
       });
     }
-    if(special==='curtain')sprawl.tips=[];
     sprawl.inputSource='body';sprawl.drive=.9;sprawl.turn=0;sprawl.paused=false;
-    this.note(special==='curtain'?'Icicles · two fingers down':'Crossed crystals · arms recognised');
-    sprawl.notice(special==='curtain'?'Icicles growing from above':'Crystals, intertwined','Hold to lengthen · Change gesture to switch');
+    this.note('Crossed crystals · arms recognised');
+    sprawl.notice('Crystals, intertwined','Hold to grow · Change gesture to switch');
     return true;
   }
 }
@@ -1196,7 +1221,7 @@ const bodyInteractions=new BodyInteractions();
   label.style.cssText='display:block;width:100%;line-height:1.5';panel.append(label);cameraButton.insertAdjacentElement('afterend',panel);bodyInteractions.label=label;
   toggle.addEventListener('click',()=>{bodyInteractions.enabled=!bodyInteractions.enabled;bodyInteractions.stop();toggle.textContent=bodyInteractions.enabled?'Body on':'Body off';toggle.setAttribute('aria-pressed',String(bodyInteractions.enabled));});
   calibrate.addEventListener('click',()=>{bodyInteractions.reset();bodyInteractions.failed=false;bodyInteractions.note('Relax shoulders · keep head and shoulders visible');});
-  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; bend both elbows, hold both forearms upright beside your shoulders for one second to reveal a snowflake halo; lower or spread your arms before repeating. Body tracking only; relaxed fingers also work. Snowfall: lean gently left or right for stronger directional wind. Sprawl: point both index fingers down and hold to grow hanging glassy icicles from the top edge; cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
+  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; bend both elbows, hold both forearms upright beside your shoulders for one second to reveal a snowflake halo; lower or spread your arms before repeating. Body tracking only; relaxed fingers also work. Snowfall: lean gently left or right for stronger directional wind. Sprawl: point both index fingers down to grow icicles (hand tracking only, Body may be off); cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
   dialog.append(guide);
 }
 // BODY_INTERACTION_END
