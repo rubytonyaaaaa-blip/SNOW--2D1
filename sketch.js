@@ -1,5 +1,5 @@
 // SNOW BLOOM — single application file
-// BODY V8 — five halo rings; independent downward-index icicles; original arm-cross crystals
+// BODY V9 — flat 2D icicle silhouettes; five halo rings and independent finger route
 // 1. Gesture controller
 // Pure interaction controller. Coordinates are normalized and mirrored once in sketch.js.
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -849,7 +849,7 @@ class SprawlScene {
       const rand=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
       f.icicles=[];
       const count=Math.max(12,Math.round(w/70)),step=w/count;
-      // Main glassy icicles: tapered, uneven, rounded roots and sharp tips.
+      // Flat icicle shapes with varied lengths and pointed ends.
       for(let i=0;i<=count;i++){
         const x=(i+(rand()-.5)*.38)*step;
         const width=step*(.72+rand()*.48);
@@ -858,37 +858,21 @@ class SprawlScene {
       }
       // Smaller background icicles make a continuous frozen roof.
       for(let i=0;i<count*2;i++)f.icicles.unshift({x:(i+.4)*step*.5,width:step*(.28+rand()*.25),length:h*(.06+rand()*.19)});
+      // Flat 2D silhouettes: one solid color, no lighting, facets or reflections.
+      g.fillStyle='#d8edf4';g.beginPath();
       for(const ice of f.icicles){
-        const x=ice.x,r=ice.width/2,L=ice.length;
-        const bend=(rand()-.5)*r*.38;
-        g.save();g.beginPath();g.moveTo(x-r,-8);
-        g.bezierCurveTo(x-r*1.12,L*.08,x-r*.44,L*.13,x-r*.39,L*.30);
-        g.bezierCurveTo(x-r*.24,L*.48,x+bend-r*.10,L*.90,x+bend,L);
-        g.bezierCurveTo(x+bend+r*.13,L*.91,x+r*.26,L*.44,x+r*.40,L*.28);
-        g.bezierCurveTo(x+r*.52,L*.12,x+r*1.08,L*.09,x+r,-8);g.closePath();
-        const glass=g.createLinearGradient(x-r,0,x+r,0);
-        glass.addColorStop(0,'rgba(103,179,204,.28)');glass.addColorStop(.13,'rgba(202,241,250,.62)');
-        glass.addColorStop(.27,'rgba(243,254,255,.86)');glass.addColorStop(.38,'rgba(162,218,234,.30)');
-        glass.addColorStop(.64,'rgba(191,236,245,.17)');glass.addColorStop(.85,'rgba(231,251,255,.73)');glass.addColorStop(1,'rgba(102,184,214,.32)');
-        g.fillStyle=glass;g.fill();g.strokeStyle='rgba(222,249,255,.62)';g.lineWidth=.8;g.stroke();g.clip();
-        // Soft refractive bands and slender highlights inside the ice.
-        for(let k=0;k<10;k++){
-          const y=(k+.3+rand()*.4)/10*L,spread=r*(1-y/L)*1.6;
-          const glow=g.createRadialGradient(x+(rand()-.5)*r,y,0,x,y,Math.max(5,spread));
-          glow.addColorStop(0,'rgba(239,254,255,.44)');glow.addColorStop(.43,'rgba(203,244,253,.16)');glow.addColorStop(1,'rgba(173,224,241,0)');
-          g.fillStyle=glow;g.fillRect(x-r,y-spread,r*2,spread*2);
-          g.beginPath();g.ellipse(x+(rand()-.5)*r*.4,y,Math.max(1,spread*.46),Math.max(1,spread*.12),-.12,0,TAU);
-          g.strokeStyle='rgba(232,253,255,.18)';g.lineWidth=.7;g.stroke();
-        }
-        g.beginPath();g.moveTo(x-r*.42,L*.08);g.bezierCurveTo(x-r*.38,L*.26,x+bend-r*.12,L*.69,x+bend,L*.97);
-        g.strokeStyle='rgba(248,255,255,.74)';g.lineWidth=Math.max(.7,r*.035);g.stroke();g.restore();
+        const x=ice.x,r=ice.width/2,L=ice.length,bend=(rand()-.5)*r*.22;
+        g.moveTo(x-r,-8);
+        g.lineTo(x-r*.52,L*.16);g.lineTo(x-r*.29,L*.40);
+        g.lineTo(x+bend,L);
+        g.lineTo(x+r*.27,L*.39);g.lineTo(x+r*.54,L*.15);
+        g.lineTo(x+r,-8);g.closePath();
       }
-      const roof=g.createLinearGradient(0,0,0,h*.075);
-      roof.addColorStop(0,'rgba(218,246,253,.82)');roof.addColorStop(.45,'rgba(186,229,240,.38)');roof.addColorStop(1,'rgba(195,238,248,0)');g.fillStyle=roof;g.fillRect(0,0,w,h*.075);
+      g.fill();g.fillRect(0,0,w,7);
     }
     const growth=clamp(f.progress/4.5,0,1);if(growth<=0)return;
     // Vertical scaling animates lengthening from the page's top edge.
-    c.save();c.globalAlpha=Math.min(1,growth*3);c.drawImage(f.cache,0,0,w,h*(1-Math.pow(1-growth,1.5)));c.restore();
+    c.save();c.globalAlpha=.78*Math.min(1,growth*3);c.drawImage(f.cache,0,0,w,h*(1-Math.pow(1-growth,1.5)));c.restore();
   }
   draw(dt,now){if(!this.paused)this.time+=dt;
     this.advance(dt);this.drawIcicles(dt);const c=this.ctx,{w,h,cx,cy}=this.dimensions();
