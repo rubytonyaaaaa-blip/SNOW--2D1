@@ -1,5 +1,5 @@
 // SNOW BLOOM — single application file
-// BODY V4 — winter embrace, stronger wind, full-screen frost; embedded model
+// BODY V6 — calm vertical snowfall on entry; upright forearms and icicles retained
 // 1. Gesture controller
 // Pure interaction controller. Coordinates are normalized and mirrored once in sketch.js.
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -45,6 +45,8 @@ class SnowController {
   switchScene(scene, now = performance.now()) {
     if (!['bloom', 'snowfall','sprawl'].includes(scene) || scene === this.state.scene) return false;
     Object.assign(this.state, {scene, dispersed: false, vortex: 0, vortexSource: null,field:false,fieldSource:null});
+    this.state.bodyWind=0;
+    if(scene==='snowfall')this.state.snowSpeed=1;
     this.resetTracking(); this.suppressUntil = now + 180; this.swipeUntil = now + 650;
     if(typeof sprawl!=='undefined')sprawl.resetInput();
     this.emit('scene'); return true;
@@ -452,6 +454,10 @@ class SnowArtwork {
   }
   draw(dt) {
     dt=clamp(dt,0,.05);const c=this.ctx,w=this.w,h=this.h;
+    if(this.previousScene!==this.state.scene){
+      if(this.state.scene==='snowfall'){this.storm=0;this.vortex=0;}
+      this.previousScene=this.state.scene;
+    }
     this.time+=dt;const t=this.time, ease=1-Math.exp(-dt*5);
     this.scale=mix(this.scale,this.state.scale,ease);this.spread=mix(this.spread,this.state.dispersed?1:0,ease*.8);
     this.sceneMix=mix(this.sceneMix,this.state.scene==='snowfall'?1:0,ease*.7);
@@ -560,12 +566,13 @@ class SnowArtwork {
         const p=this.snow[i],depth=p.z,speed=this.state.snowSpeed;
         const gust=Math.sin(t*.72+p.p*.18)*.014+Math.sin(t*1.8+p.p)*.008;
         const bodyWind=this.state.bodyWind||0;
-        const vx=(.003+this.storm*(.025+depth*.08))*(1-Math.min(1,Math.abs(bodyWind)*2))+gust*(.3+this.storm)*(.2+depth)+bodyWind*(.16+depth*.48);
+        // No default sideways drift. Wind/storm interactions introduce lateral motion.
+        const vx=this.storm*(.025+depth*.08)*(1-Math.min(1,Math.abs(bodyWind)*2))+gust*this.storm*(.2+depth)+bodyWind*(.16+depth*.48);
         const vy=(.027+depth*depth*.16)*speed*(1+this.storm*.7);
         if(!this.reducedMotion){p.x+=dt*vx;p.y+=dt*vy;}
         if(p.y>1.14){p.y=-.14-random()*.12;p.x=random()*1.3-.15;}
         if(p.x>1.2)p.x=-.18;if(p.x<-.2)p.x=1.18;
-        const x=p.x*w+Math.sin(t*(.35+depth*.28)+p.p)*(6+depth*15),y=p.y*h;
+        const x=p.x*w,y=p.y*h; // Calm snow follows a truly vertical path.
         const near=depth>.91,far=depth<.28,blur=near?2:far?1:0;
         const r=p.r*(.22+depth*depth*(2.4+this.storm*.75))*(this.mobile?.8:1);
         const edgeFade=clamp((count-i)/90,0,1),alpha=(far?.28:near?.46:.79)*this.sceneMix*(1-Math.min(1,this.vortex)*.74)*edgeFade;
@@ -612,7 +619,7 @@ class SprawlScene {
   resetInput(){this.drive=0;this.contact=false;this.dualSince=null;this.dualFired=false;this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.wrist=null;this.turn=0;this.growArmed=false;this.pinchSince=null;this.okSince=null;this.okLatched=false;this.okRelease=null;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;}
   selectEffect(effect,force=false){
     if(!force&&this.effect===effect)return;
-    this.effect=effect;this.frostCover=null;this.segments=[];this.archives=[];this.tips=[];this.links=[];this.orbs=[];this.shards=[];this.burst=null;
+    this.effect=effect;this.icicleCover=null;this.segments=[];this.archives=[];this.tips=[];this.links=[];this.orbs=[];this.shards=[];this.burst=null;
     this.drive=0;this.active=0;this.growArmed=false;this.turn=0;this.wrist=null;this.paused=false;this.acc=0;
     this.center={x:0,y:0};this.zoom=1;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;this.okSince=null;this.okLatched=false;this.okRelease=null;artwork.extra=[];
   }
@@ -803,55 +810,62 @@ class SprawlScene {
       this.drawFrostCrystal(p,age);
     }
   }
-  startFrostCover(origins){
-    this.frostCover={progress:0,origins:origins.map(p=>({x:p.x,y:p.y})),cache:null};
+  startIcicles(){
+    this.icicleCover={progress:0,cache:null};
   }
-  drawFrostCover(dt){
-    const f=this.frostCover;if(!f||this.effect!=='curtain')return;
-    if(!this.paused&&this.drive>0)f.progress=Math.min(8,f.progress+dt);
+  drawIcicles(dt){
+    const f=this.icicleCover;if(!f||this.effect!=='curtain')return;
+    if(!this.paused&&this.drive>0)f.progress=Math.min(5,f.progress+dt);
     const {w,h}=this.dimensions(),c=this.ctx;
     if(!f.cache||f.w!==w||f.h!==h){
       f.w=w;f.h=h;f.cache=document.createElement('canvas');f.cache.width=Math.ceil(w);f.cache.height=Math.ceil(h);
-      const g=f.cache.getContext('2d');f.cells=[];
-      const cols=Math.max(3,Math.ceil(w/155)),rows=Math.max(3,Math.ceil(h/155)),cw=w/cols,ch=h/rows;
-      // Fixed seeded texture: no frame-by-frame random flickering.
-      let seed=42087;const rand=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
-      for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
-        const x=(col+.5)*cw,y=(row+.5)*ch,r=Math.hypot(cw,ch)*.76;
-        const dist=Math.min(...f.origins.map(p=>Math.hypot(x-p.x*w,y-p.y*h)/Math.hypot(w,h)));
-        f.cells.push({x:col*cw,y:row*ch,w:cw,h:ch,delay:dist*2.2+rand()*.55});
-        const haze=g.createRadialGradient(x,y,0,x,y,r);
-        haze.addColorStop(0,'rgba(201,232,249,.15)');haze.addColorStop(1,'rgba(212,244,255,0)');g.fillStyle=haze;g.fillRect(x-r,y-r,r*2,r*2);
-        g.save();g.translate(x+(rand()-.5)*cw*.35,y+(rand()-.5)*ch*.35);g.rotate(rand()*Math.PI/3);
-        for(let arm=0;arm<6;arm++){
-          g.save();g.rotate(arm*Math.PI/3);const len=r*(.65+rand()*.35);
-          g.strokeStyle='rgba(233,250,255,.7)';g.lineWidth=.9;g.beginPath();g.moveTo(0,0);g.lineTo(len,0);g.stroke();
-          g.strokeStyle='rgba(213,240,255,.55)';g.lineWidth=.6;g.beginPath();
-          for(let k=1;k<=13;k++){
-            const pos=k/14,len2=len*(1-pos)*(.38+rand()*.22);
-            for(const sign of [-1,1]){
-              const bx=pos*len,ex=bx+len2*.5,ey=sign*len2*.866;
-              g.moveTo(bx,0);g.lineTo(ex,ey);
-              for(const q of [.25,.5,.72]){const sx=mix(bx,ex,q),sy=ey*q,l=len2*(1-q)*.4;g.moveTo(sx,sy);g.lineTo(sx+l*.75,sy+sign*l*.65);}
-            }
-          }
-          g.stroke();g.restore();
-        }
-        g.restore();
+      const g=f.cache.getContext('2d');let seed=918732;
+      const rand=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
+      f.icicles=[];
+      const count=Math.max(12,Math.round(w/70)),step=w/count;
+      // Main glassy icicles: tapered, uneven, rounded roots and sharp tips.
+      for(let i=0;i<=count;i++){
+        const x=(i+(rand()-.5)*.38)*step;
+        const width=step*(.72+rand()*.48);
+        const length=h*(i%4===1?.50+rand()*.23:.18+rand()*.27);
+        f.icicles.push({x,width,length});
       }
+      // Smaller background icicles make a continuous frozen roof.
+      for(let i=0;i<count*2;i++)f.icicles.unshift({x:(i+.4)*step*.5,width:step*(.28+rand()*.25),length:h*(.06+rand()*.19)});
+      for(const ice of f.icicles){
+        const x=ice.x,r=ice.width/2,L=ice.length;
+        const bend=(rand()-.5)*r*.38;
+        g.save();g.beginPath();g.moveTo(x-r,-8);
+        g.bezierCurveTo(x-r*1.12,L*.08,x-r*.44,L*.13,x-r*.39,L*.30);
+        g.bezierCurveTo(x-r*.24,L*.48,x+bend-r*.10,L*.90,x+bend,L);
+        g.bezierCurveTo(x+bend+r*.13,L*.91,x+r*.26,L*.44,x+r*.40,L*.28);
+        g.bezierCurveTo(x+r*.52,L*.12,x+r*1.08,L*.09,x+r,-8);g.closePath();
+        const glass=g.createLinearGradient(x-r,0,x+r,0);
+        glass.addColorStop(0,'rgba(103,179,204,.28)');glass.addColorStop(.13,'rgba(202,241,250,.62)');
+        glass.addColorStop(.27,'rgba(243,254,255,.86)');glass.addColorStop(.38,'rgba(162,218,234,.30)');
+        glass.addColorStop(.64,'rgba(191,236,245,.17)');glass.addColorStop(.85,'rgba(231,251,255,.73)');glass.addColorStop(1,'rgba(102,184,214,.32)');
+        g.fillStyle=glass;g.fill();g.strokeStyle='rgba(222,249,255,.62)';g.lineWidth=.8;g.stroke();g.clip();
+        // Soft refractive bands and slender highlights inside the ice.
+        for(let k=0;k<10;k++){
+          const y=(k+.3+rand()*.4)/10*L,spread=r*(1-y/L)*1.6;
+          const glow=g.createRadialGradient(x+(rand()-.5)*r,y,0,x,y,Math.max(5,spread));
+          glow.addColorStop(0,'rgba(239,254,255,.44)');glow.addColorStop(.43,'rgba(203,244,253,.16)');glow.addColorStop(1,'rgba(173,224,241,0)');
+          g.fillStyle=glow;g.fillRect(x-r,y-spread,r*2,spread*2);
+          g.beginPath();g.ellipse(x+(rand()-.5)*r*.4,y,Math.max(1,spread*.46),Math.max(1,spread*.12),-.12,0,TAU);
+          g.strokeStyle='rgba(232,253,255,.18)';g.lineWidth=.7;g.stroke();
+        }
+        g.beginPath();g.moveTo(x-r*.42,L*.08);g.bezierCurveTo(x-r*.38,L*.26,x+bend-r*.12,L*.69,x+bend,L*.97);
+        g.strokeStyle='rgba(248,255,255,.74)';g.lineWidth=Math.max(.7,r*.035);g.stroke();g.restore();
+      }
+      const roof=g.createLinearGradient(0,0,0,h*.075);
+      roof.addColorStop(0,'rgba(218,246,253,.82)');roof.addColorStop(.45,'rgba(186,229,240,.38)');roof.addColorStop(1,'rgba(195,238,248,0)');g.fillStyle=roof;g.fillRect(0,0,w,h*.075);
     }
-    if(f.cells.every(cell=>f.progress>=cell.delay+3.6)){c.drawImage(f.cache,0,0,w,h);return;}
-    c.save();
-    for(const cell of f.cells){
-      const growth=clamp((f.progress-cell.delay)/3.6,0,1);if(growth<=0)continue;
-      c.save();c.beginPath();c.rect(cell.x,cell.y,cell.w,cell.h);c.clip();
-      c.beginPath();c.arc(cell.x+cell.w/2,cell.y+cell.h/2,Math.hypot(cell.w,cell.h)*.51*growth,0,TAU);c.clip();
-      c.globalAlpha=Math.min(1,growth*2.5);c.drawImage(f.cache,cell.x,cell.y,cell.w,cell.h,cell.x,cell.y,cell.w,cell.h);c.restore();
-    }
-    c.restore();
+    const growth=clamp(f.progress/4.5,0,1);if(growth<=0)return;
+    // Vertical scaling animates lengthening from the page's top edge.
+    c.save();c.globalAlpha=Math.min(1,growth*3);c.drawImage(f.cache,0,0,w,h*(1-Math.pow(1-growth,1.5)));c.restore();
   }
   draw(dt,now){if(!this.paused)this.time+=dt;
-    this.advance(dt);this.drawFrostCover(dt);const c=this.ctx,{w,h,cx,cy}=this.dimensions();
+    this.advance(dt);this.drawIcicles(dt);const c=this.ctx,{w,h,cx,cy}=this.dimensions();
     // Fixed world centre and preserved segments prevent old crystals drifting away.
     c.save();c.translate(cx,cy);c.scale(this.zoom,this.zoom);c.translate(-this.center.x,-this.center.y);
     for(const archive of this.archives){
@@ -935,18 +949,26 @@ addEventListener('pointermove',e=>{if(controller.state.fieldSource==='manual'&&c
 // BODY_INTERACTION_START — 身体动作扩展；模型已内嵌，只需替换 sketch.js。
 // 可调参数集中在这里：动作保持时间、耸肩阈值、身体识别间隔。
 const BODY_CONFIG = {
-  holdMs: 320, embraceHoldMs: 1000, releaseMs: 650, poseInterval: 120,
+  holdMs: 320, postureHoldMs: 1000, releaseMs: 650, poseInterval: 120,
   openArmRatio: 2.35, closeArmRatio: 1.1
 };
-// Crossed wrists must reach opposite shoulders, away from ordinary gathering.
-function bodyWinterEmbrace(p,aspect){
+// Body-only posture: both elbows bent and both forearms upright beside shoulders.
+// Fists are the visual instruction; finger landmarks and hand labels are not required.
+function bodyUprightForearms(p,aspect){
   const visible=i=>p?.[i]&&Number.isFinite(p[i].x)&&Number.isFinite(p[i].y)&&(p[i].visibility??1)>.35;
   if(![11,12,13,14,15,16].every(visible))return false;
   const width=Math.max(.08,Math.abs(p[11].x-p[12].x)*aspect);
-  const near=(a,b)=>Math.hypot((p[a].x-p[b].x)*aspect,p[a].y-p[b].y)<width*.64;
-  const crossed=(p[15].x-p[16].x)*Math.sign(p[11].x-p[12].x)<-width/aspect*.24;
-  const lowElbows=p[13].y>p[15].y+width*.10&&p[14].y>p[16].y+width*.10;
-  return crossed&&near(15,12)&&near(16,11)&&lowElbows;
+  const center=(p[11].x+p[12].x)/2;
+  return [[11,13,15],[12,14,16]].every(([s,e,w])=>{
+    const shoulder=p[s],elbow=p[e],wrist=p[w];
+    const rise=elbow.y-wrist.y;
+    const upright=rise>width*.48&&Math.abs(wrist.x-elbow.x)*aspect<rise*.62;
+    const besideShoulder=wrist.y>shoulder.y-width*.85&&wrist.y<shoulder.y+width*.28;
+    const elbowLow=elbow.y>shoulder.y+width*.22&&elbow.y<shoulder.y+width*1.7;
+    const ownSide=(wrist.x-center)*Math.sign(shoulder.x-center)>width/aspect*.15;
+    const comfortableReach=Math.abs(wrist.x-shoulder.x)*aspect<width*1.15;
+    return upright&&besideShoulder&&elbowLow&&ownSide&&comfortableReach;
+  });
 }
 function bodyLean(p,aspect){
   const left=p[11].x<p[12].x?p[11]:p[12],right=left===p[11]?p[12]:p[11];
@@ -1071,11 +1093,11 @@ class BodyInteractions {
     const shoulder=Math.max(.08,Math.abs(p[11].x-p[12].x)*aspect);
     if(s.scene==='bloom'){
       if(![13,14,15,16].every(i=>this.point(p,i)))return false;
-      const embrace=bodyWinterEmbrace(p,aspect);
+      const embrace=bodyUprightForearms(p,aspect);
       if(embrace){
         this.hugReleaseSince=null;
-        if(this.stable('halo',now)&&now-this.since>=BODY_CONFIG.embraceHoldMs){
-          if(this.hugArmed){this.hugArmed=false;this.latched='halo';this.lastSpecial=now;this.note('Winter embrace · snow halo');}
+        if(this.stable('halo',now)&&now-this.since>=BODY_CONFIG.postureHoldMs){
+          if(this.hugArmed){this.hugArmed=false;this.latched='halo';this.lastSpecial=now;this.note('Upright forearms · snow halo');}
           if(this.latched==='halo')this.haloUntil=now+1200;
         }
         return true;
@@ -1144,7 +1166,7 @@ class BodyInteractions {
     this.lastSpecial=now;
     if(this.latched!==special||sprawl.effect!==special){
       this.latched=special;sprawl.selectEffect(special,true);sprawl.active=++sprawl.group;
-      if(special==='curtain')sprawl.startFrostCover(hands.map(h=>h.points[8]));
+      if(special==='curtain')sprawl.startIcicles();
       const origins=special==='curtain'?hands.map(h=>h.points[8]):[crossOrigin];
       for(const origin of origins){
         const q=sprawl.world(origin);
@@ -1158,8 +1180,8 @@ class BodyInteractions {
     }
     if(special==='curtain')sprawl.tips=[];
     sprawl.inputSource='body';sprawl.drive=.9;sprawl.turn=0;sprawl.paused=false;
-    this.note(special==='curtain'?'Frost curtain · two fingers down':'Crossed crystals · arms recognised');
-    sprawl.notice(special==='curtain'?'Frost across the whole window':'Crystals, intertwined','Hold to spread · Change gesture to switch');
+    this.note(special==='curtain'?'Icicles · two fingers down':'Crossed crystals · arms recognised');
+    sprawl.notice(special==='curtain'?'Icicles growing from above':'Crystals, intertwined','Hold to lengthen · Change gesture to switch');
     return true;
   }
 }
@@ -1174,7 +1196,7 @@ const bodyInteractions=new BodyInteractions();
   label.style.cssText='display:block;width:100%;line-height:1.5';panel.append(label);cameraButton.insertAdjacentElement('afterend',panel);bodyInteractions.label=label;
   toggle.addEventListener('click',()=>{bodyInteractions.enabled=!bodyInteractions.enabled;bodyInteractions.stop();toggle.textContent=bodyInteractions.enabled?'Body on':'Body off';toggle.setAttribute('aria-pressed',String(bodyInteractions.enabled));});
   calibrate.addEventListener('click',()=>{bodyInteractions.reset();bodyInteractions.failed=false;bodyInteractions.note('Relax shoulders · keep head and shoulders visible');});
-  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; cross your arms and rest your hands below the opposite shoulders for one second to reveal a snowflake halo; lower or spread your arms before repeating. Snowfall: lean gently left or right for stronger directional wind. Sprawl: point both index fingers down and hold to spread frost across the entire page; cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
+  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; bend both elbows, hold both forearms upright beside your shoulders for one second to reveal a snowflake halo; lower or spread your arms before repeating. Body tracking only; relaxed fingers also work. Snowfall: lean gently left or right for stronger directional wind. Sprawl: point both index fingers down and hold to grow hanging glassy icicles from the top edge; cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
   dialog.append(guide);
 }
 // BODY_INTERACTION_END
