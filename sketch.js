@@ -1,5 +1,5 @@
 // SNOW BLOOM — single application file
-// BODY V3 — single-hand snow catch, embedded supplied pose model
+// BODY V4 — winter embrace, stronger wind, full-screen frost; embedded model
 // 1. Gesture controller
 // Pure interaction controller. Coordinates are normalized and mirrored once in sketch.js.
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -555,12 +555,13 @@ class SnowArtwork {
       c.fillStyle=`rgba(234,255,255,${.9*bloomAlpha*(1-this.spread)})`;c.shadowBlur=2;c.shadowColor='#bcf7ff';c.beginPath();c.arc(0,0,2.4,0,TAU);c.fill();c.shadowBlur=0;c.restore();
     }
     if(this.sceneMix>.005&&this.state.scene!=='sprawl') {
-      const count=Math.min(this.snow.length,Math.round(400+this.storm*1150+(this.state.bodySnowPulse||0)*500)),sprites=this.storm>.18?this.stormSprites[this.state.snowPalette||0]:this.snowfallSprites;
+      const count=Math.min(this.snow.length,Math.round(400+this.storm*1150)),sprites=this.storm>.18?this.stormSprites[this.state.snowPalette||0]:this.snowfallSprites;
       for(let i=0;i<count;i++){
         const p=this.snow[i],depth=p.z,speed=this.state.snowSpeed;
         const gust=Math.sin(t*.72+p.p*.18)*.014+Math.sin(t*1.8+p.p)*.008;
-        const vx=(.003+this.storm*(.025+depth*.08))+gust*(.3+this.storm)*(.2+depth)+(this.state.bodyWind||0)*(.025+depth*.16);
-        const vy=(.027+depth*depth*.16)*speed*(1+this.storm*.7+(this.state.bodySnowPulse||0)*.8);
+        const bodyWind=this.state.bodyWind||0;
+        const vx=(.003+this.storm*(.025+depth*.08))*(1-Math.min(1,Math.abs(bodyWind)*2))+gust*(.3+this.storm)*(.2+depth)+bodyWind*(.16+depth*.48);
+        const vy=(.027+depth*depth*.16)*speed*(1+this.storm*.7);
         if(!this.reducedMotion){p.x+=dt*vx;p.y+=dt*vy;}
         if(p.y>1.14){p.y=-.14-random()*.12;p.x=random()*1.3-.15;}
         if(p.x>1.2)p.x=-.18;if(p.x<-.2)p.x=1.18;
@@ -611,7 +612,7 @@ class SprawlScene {
   resetInput(){this.drive=0;this.contact=false;this.dualSince=null;this.dualFired=false;this.linkSince=null;this.linkFired=false;this.zoomStart=null;this.wrist=null;this.turn=0;this.growArmed=false;this.pinchSince=null;this.okSince=null;this.okLatched=false;this.okRelease=null;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;}
   selectEffect(effect,force=false){
     if(!force&&this.effect===effect)return;
-    this.effect=effect;this.segments=[];this.archives=[];this.tips=[];this.links=[];this.orbs=[];this.shards=[];this.burst=null;
+    this.effect=effect;this.frostCover=null;this.segments=[];this.archives=[];this.tips=[];this.links=[];this.orbs=[];this.shards=[];this.burst=null;
     this.drive=0;this.active=0;this.growArmed=false;this.turn=0;this.wrist=null;this.paused=false;this.acc=0;
     this.center={x:0,y:0};this.zoom=1;this.fistSince=null;this.shatterOpenSince=null;this.shatterArmed=false;this.okSince=null;this.okLatched=false;this.okRelease=null;artwork.extra=[];
   }
@@ -802,8 +803,55 @@ class SprawlScene {
       this.drawFrostCrystal(p,age);
     }
   }
+  startFrostCover(origins){
+    this.frostCover={progress:0,origins:origins.map(p=>({x:p.x,y:p.y})),cache:null};
+  }
+  drawFrostCover(dt){
+    const f=this.frostCover;if(!f||this.effect!=='curtain')return;
+    if(!this.paused&&this.drive>0)f.progress=Math.min(8,f.progress+dt);
+    const {w,h}=this.dimensions(),c=this.ctx;
+    if(!f.cache||f.w!==w||f.h!==h){
+      f.w=w;f.h=h;f.cache=document.createElement('canvas');f.cache.width=Math.ceil(w);f.cache.height=Math.ceil(h);
+      const g=f.cache.getContext('2d');f.cells=[];
+      const cols=Math.max(3,Math.ceil(w/155)),rows=Math.max(3,Math.ceil(h/155)),cw=w/cols,ch=h/rows;
+      // Fixed seeded texture: no frame-by-frame random flickering.
+      let seed=42087;const rand=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
+      for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+        const x=(col+.5)*cw,y=(row+.5)*ch,r=Math.hypot(cw,ch)*.76;
+        const dist=Math.min(...f.origins.map(p=>Math.hypot(x-p.x*w,y-p.y*h)/Math.hypot(w,h)));
+        f.cells.push({x:col*cw,y:row*ch,w:cw,h:ch,delay:dist*2.2+rand()*.55});
+        const haze=g.createRadialGradient(x,y,0,x,y,r);
+        haze.addColorStop(0,'rgba(201,232,249,.15)');haze.addColorStop(1,'rgba(212,244,255,0)');g.fillStyle=haze;g.fillRect(x-r,y-r,r*2,r*2);
+        g.save();g.translate(x+(rand()-.5)*cw*.35,y+(rand()-.5)*ch*.35);g.rotate(rand()*Math.PI/3);
+        for(let arm=0;arm<6;arm++){
+          g.save();g.rotate(arm*Math.PI/3);const len=r*(.65+rand()*.35);
+          g.strokeStyle='rgba(233,250,255,.7)';g.lineWidth=.9;g.beginPath();g.moveTo(0,0);g.lineTo(len,0);g.stroke();
+          g.strokeStyle='rgba(213,240,255,.55)';g.lineWidth=.6;g.beginPath();
+          for(let k=1;k<=13;k++){
+            const pos=k/14,len2=len*(1-pos)*(.38+rand()*.22);
+            for(const sign of [-1,1]){
+              const bx=pos*len,ex=bx+len2*.5,ey=sign*len2*.866;
+              g.moveTo(bx,0);g.lineTo(ex,ey);
+              for(const q of [.25,.5,.72]){const sx=mix(bx,ex,q),sy=ey*q,l=len2*(1-q)*.4;g.moveTo(sx,sy);g.lineTo(sx+l*.75,sy+sign*l*.65);}
+            }
+          }
+          g.stroke();g.restore();
+        }
+        g.restore();
+      }
+    }
+    if(f.cells.every(cell=>f.progress>=cell.delay+3.6)){c.drawImage(f.cache,0,0,w,h);return;}
+    c.save();
+    for(const cell of f.cells){
+      const growth=clamp((f.progress-cell.delay)/3.6,0,1);if(growth<=0)continue;
+      c.save();c.beginPath();c.rect(cell.x,cell.y,cell.w,cell.h);c.clip();
+      c.beginPath();c.arc(cell.x+cell.w/2,cell.y+cell.h/2,Math.hypot(cell.w,cell.h)*.51*growth,0,TAU);c.clip();
+      c.globalAlpha=Math.min(1,growth*2.5);c.drawImage(f.cache,cell.x,cell.y,cell.w,cell.h,cell.x,cell.y,cell.w,cell.h);c.restore();
+    }
+    c.restore();
+  }
   draw(dt,now){if(!this.paused)this.time+=dt;
-    this.advance(dt);const c=this.ctx,{w,h,cx,cy}=this.dimensions();
+    this.advance(dt);this.drawFrostCover(dt);const c=this.ctx,{w,h,cx,cy}=this.dimensions();
     // Fixed world centre and preserved segments prevent old crystals drifting away.
     c.save();c.translate(cx,cy);c.scale(this.zoom,this.zoom);c.translate(-this.center.x,-this.center.y);
     for(const archive of this.archives){
@@ -871,7 +919,7 @@ function drawHands(){const w=video.videoWidth||640,h=video.videoHeight||480;if(o
 function infer(now){if(cameraState!=='ready'||!recognizer)return;if(video.readyState<2||video.currentTime===lastVideoTime){if(now-lastResult>600){hands=[];drawHands();$('#handCount').textContent='0 HANDS';status('Waiting for camera…');}return;}if(now-lastInference<(bodyInteractions.task?90:45))return;lastInference=now;lastVideoTime=video.currentTime;
  try{const result=recognizer.recognizeForVideo(video,now);inferenceErrors=0;lastResult=now;const sides=result.handedness||result.handednesses||[];hands=(result.landmarks||[]).map((lm,i)=>({points:lm.map(p=>({x:1-p.x,y:p.y,z:p.z})),gesture:result.gestures?.[i]?.[0]?.categoryName||'None',score:result.gestures?.[i]?.[0]?.score||0,aspect:(video.videoWidth||640)/(video.videoHeight||480),side:sides[i]?.[0]?.categoryName||String(i)}));controller.process(hands,now);drawHands();$('#handCount').textContent=hands.length+' HAND'+(hands.length===1?'':'S');status(hands.length?hands.map(h=>(h.side==='Left'?'Left':h.side==='Right'?'Right':'Hand')+' · '+(controller.pinch?'Pinch':GESTURES[h.gesture]||'Moving')).join(' / '):'Show your whole hand');}
  catch(error){inferenceErrors++;if(inferenceErrors>=3){stopCamera('Tracking stopped. Try again.');toast('Tracking paused. Use the controls.');}console.warn('Snow Bloom inference:',error);}}
-function loop(now){const dt=Math.min(.05,Math.max(0,(now-lastFrame)/1000));lastFrame=now;if(!document.hidden){bodyInteractions.tick(now);infer(now);controller.state.bodySnowPulse=Math.max(0,(controller.state.bodySnowPulse||0)-dt*.6);controller.tick(now);artwork.draw(dt);bodyInteractions.drawHalo(now,dt);if(controller.state.scene==='sprawl')sprawl.draw(dt,now);}requestAnimationFrame(loop);}requestAnimationFrame(loop);
+function loop(now){const dt=Math.min(.05,Math.max(0,(now-lastFrame)/1000));lastFrame=now;if(!document.hidden){bodyInteractions.tick(now);infer(now);controller.tick(now);artwork.draw(dt);bodyInteractions.drawHalo(now,dt);if(controller.state.scene==='sprawl')sprawl.draw(dt,now);}requestAnimationFrame(loop);}requestAnimationFrame(loop);
 cameraButton.addEventListener('click',startCamera);$('#toggleCamera').addEventListener('click',()=>{const collapsed=$('#cameraBox').classList.toggle('collapsed');$('#toggleCamera').textContent=collapsed?'+':'−';$('#toggleCamera').setAttribute('aria-expanded',String(!collapsed));});
 $$('[data-scene]').forEach(b=>b.addEventListener('click',()=>controller.switchScene(b.dataset.scene)));
 function manualAction(name){if(controller.state.scene==='sprawl'){sprawl.inputSource='manual';if(name==='grow'){if(!sprawl.active)sprawl.seed();sprawl.drive=sprawl.drive?0:.8;if(sprawl.drive)sprawl.paused=false;sprawl.notice(sprawl.drive?'Branches unfolding':'Growth resting','Pinch and open to grow by hand');}if(name==='orb')sprawl.spawnOrb();if(name==='shatter')sprawl.shatterOrb();if(name==='connect')sprawl.connect();if(name==='turn'){if(!sprawl.active)sprawl.seed();sprawl.drive=sprawl.drive||.8;sprawl.turn=sprawl.turn>0?-.9:.9;sprawl.notice(sprawl.turn>0?'Turning clockwise':'Turning counterclockwise','Click Turn again to reverse');}if(name==='pause')sprawl.toggle();if(name==='view'){sprawl.zoom=sprawl.zoom>.7?.5:1;sprawl.notice('A wider winter',Math.round(sprawl.zoom*100)+'% view');}return;}if(name==='pinch'){const slider=$('#sizeSlider');slider.focus();controller.action('scale',{value:controller.state.scale>=1.4?.7:controller.state.scale+.25});toast('Drag Size or press + / -');return;}controller.action(name);if(name==='Pointing_Up'){for(let i=1;i<=18;i++)artwork.trail(.39+i*.018,.48+Math.sin(i*.3)*.045,{x:.39+(i-1)*.018,y:.48+Math.sin((i-1)*.3)*.045});}const b=$$('[data-action]').find(b=>b.dataset.action===name);if(b){$$('[data-action]').forEach(x=>x.classList.remove('is-active'));b.classList.add('is-active');clearTimeout(activeTimer);activeTimer=setTimeout(()=>b.classList.remove('is-active'),700);}}
@@ -887,24 +935,27 @@ addEventListener('pointermove',e=>{if(controller.state.fieldSource==='manual'&&c
 // BODY_INTERACTION_START — 身体动作扩展；模型已内嵌，只需替换 sketch.js。
 // 可调参数集中在这里：动作保持时间、耸肩阈值、身体识别间隔。
 const BODY_CONFIG = {
-  holdMs: 320, receiveHoldMs: 900, releaseMs: 650, poseInterval: 120,
-  shrugThreshold: .05, shrugCooldown: 1400,
+  holdMs: 320, embraceHoldMs: 1000, releaseMs: 650, poseInterval: 120,
   openArmRatio: 2.35, closeArmRatio: 1.1
 };
-// BODY V3: wrist and elbow geometry allows either hand and relaxed fingers.
-function bodyReceivingSnow(p,aspect){
+// Crossed wrists must reach opposite shoulders, away from ordinary gathering.
+function bodyWinterEmbrace(p,aspect){
   const visible=i=>p?.[i]&&Number.isFinite(p[i].x)&&Number.isFinite(p[i].y)&&(p[i].visibility??1)>.35;
   if(![11,12,13,14,15,16].every(visible))return false;
   const width=Math.max(.08,Math.abs(p[11].x-p[12].x)*aspect);
-  const chest=(p[11].y+p[12].y)/2;
-  return [[11,13,15,16],[12,14,16,15]].some(([s,e,w,other])=>{
-    const wrist=p[w],elbow=p[e];
-    const chestHeight=wrist.y>chest+width*.12&&wrist.y<chest+width*.88;
-    const bentArm=elbow.y>wrist.y+width*.12&&elbow.y<chest+width*1.55;
-    const nearBody=Math.abs(wrist.x-p[s].x)*aspect<width*1.05;
-    const restingArm=p[other].y>chest+width*1.03;
-    return chestHeight&&bentArm&&nearBody&&restingArm;
-  });
+  const near=(a,b)=>Math.hypot((p[a].x-p[b].x)*aspect,p[a].y-p[b].y)<width*.64;
+  const crossed=(p[15].x-p[16].x)*Math.sign(p[11].x-p[12].x)<-width/aspect*.24;
+  const lowElbows=p[13].y>p[15].y+width*.10&&p[14].y>p[16].y+width*.10;
+  return crossed&&near(15,12)&&near(16,11)&&lowElbows;
+}
+function bodyLean(p,aspect){
+  const left=p[11].x<p[12].x?p[11]:p[12],right=left===p[11]?p[12]:p[11];
+  const width=Math.max(.08,Math.abs(p[11].x-p[12].x)*aspect);
+  let lean=(right.y-left.y)/width;
+  if([23,24].every(i=>p[i]&&(p[i].visibility??1)>.35)){
+    lean+=((p[11].x+p[12].x-p[23].x-p[24].x)/2)*aspect/width*.7;
+  }
+  return lean;
 }
 class BodyInteractions {
   constructor(){
@@ -916,7 +967,7 @@ class BodyInteractions {
     this.samples=[];this.baseline=null;this.raised=false;this.shrugAt=-Infinity;
     this.shrugCandidate=null;this.shrugNeutral=null;this.haloUntil=0;this.halo=0;this.lastHaloDraw=0;this.shrugLevel=0;
     this.candidate='';this.since=0;this.latched='';this.lastSpecial=-Infinity;
-    this.wind=0;this.scene=null;this.pose=null;this.lastGood=-Infinity;
+    this.wind=0;this.neutralLean=0;this.hugArmed=true;this.hugReleaseSince=null;this.scene=null;this.pose=null;this.lastGood=-Infinity;
     this.lastPoseAt=-Infinity;this.lastPoseVideo=-1;this.poseErrors=0;
     controller.state.bodyWind=0;controller.state.bodySnowPulse=0;
   }
@@ -963,44 +1014,21 @@ class BodyInteractions {
     if(!this.point(points,0)){this.note('Show head and both shoulders');return;}
     const gaps=[(points[11].y-points[0].y)/width,(points[12].y-points[0].y)/width];
     if(!this.baseline){
-      this.samples.push({gaps,width});
+      this.samples.push({gaps,width,lean:bodyLean(points,aspect)});
       if(this.samples.length>=12){
         const relaxed=a=>a.sort((a,b)=>a-b)[Math.floor((a.length-1)*.8)];
         this.baseline=[relaxed(this.samples.map(s=>s.gaps[0])),relaxed(this.samples.map(s=>s.gaps[1]))];
         this.baseWidth=this.samples.map(s=>s.width).sort((a,b)=>a-b)[6];
-        this.note('Body ready · shoulders calibrated');
+        this.neutralLean=this.samples.map(s=>s.lean).sort((a,b)=>a-b)[6];
+        this.note('Body ready · neutral posture calibrated');
       }else this.note('Relax shoulders · '+Math.round(this.samples.length/12*100)+'%');
       return;
     }
-    if(controller.state.scene!=='snowfall')return;
-    // 靠近镜头或明显转身时不当作耸肩。
-    if(width<this.baseWidth*.7||width>this.baseWidth*1.4){this.raised=false;this.shrugCandidate=null;return;}
-    const lifts=this.baseline.map((base,i)=>base-gaps[i]);
-    const lift=(lifts[0]+lifts[1])/2;
-    this.shrugLevel=clamp(lift/BODY_CONFIG.shrugThreshold,0,1);
-    const bothLift=lifts.every(v=>v>BODY_CONFIG.shrugThreshold*.35);
-    if(!this.raised&&lift>BODY_CONFIG.shrugThreshold&&bothLift&&now-this.shrugAt>BODY_CONFIG.shrugCooldown){
-      if(this.shrugCandidate===null)this.shrugCandidate=now;
-      if(now-this.shrugCandidate>=160){
-        this.raised=true;this.shrugAt=now;this.shrugNeutral=null;this.snowPulse();
-      }else this.note('Shoulders rising…');
-    }else if(!this.raised)this.shrugCandidate=null;
-    if(this.raised&&lift<BODY_CONFIG.shrugThreshold*.35){
-      if(this.shrugNeutral===null)this.shrugNeutral=now;
-      if(now-this.shrugNeutral>=180){this.raised=false;this.shrugCandidate=null;this.note('Ready for another shrug');}
-    }else this.shrugNeutral=null;
-    // 只跟随更放松、更低的肩位，避免把耸起的肩膀学成新基准。
-    if(!this.raised&&lift<-.03){this.baseline=this.baseline.map((base,i)=>mix(base,gaps[i],.025));}
-  }
-
-  snowPulse(){
-    controller.state.bodySnowPulse=1;
-    for(let i=0;i<220;i++){const p=artwork.snow[i];p.y=.02+random()*.12;p.x=.05+random()*.9;}
-    this.note('Shoulder snowfall');
+    // Shoulder lifting no longer triggers any visual effect.
   }
   tick(now){
     const s=controller.state;
-    if(this.scene!==s.scene){this.scene=s.scene;this.candidate='';this.latched='';this.raised=false;this.lastSpecial=-Infinity;this.wind=0;s.bodyWind=0;s.bodySnowPulse=0;}
+    if(this.scene!==s.scene){this.scene=s.scene;this.candidate='';this.latched='';this.raised=false;this.lastSpecial=-Infinity;this.wind=0;this.hugArmed=true;this.hugReleaseSince=null;s.bodyWind=0;s.bodySnowPulse=0;}
     if(!this.enabled||cameraState!=='ready'||document.hidden)return;
     if(!this.task){void this.load();return;}
     if(now-this.lastPoseAt<BODY_CONFIG.poseInterval||video.readyState<2||this.lastPoseVideo===video.currentTime)return;
@@ -1043,16 +1071,22 @@ class BodyInteractions {
     const shoulder=Math.max(.08,Math.abs(p[11].x-p[12].x)*aspect);
     if(s.scene==='bloom'){
       if(![13,14,15,16].every(i=>this.point(p,i)))return false;
-      // One relaxed receiving arm at chest level; the other arm rests low.
-      // Palm direction is a visual cue, not a fragile recognition requirement.
-      const receivingSnow=bodyReceivingSnow(p,aspect);
-      if(receivingSnow){
-        if(this.stable('halo',now)&&now-this.since>=BODY_CONFIG.receiveHoldMs){
-          this.haloUntil=now+1800;this.lastSpecial=now;
-          if(this.latched!=='halo'){this.latched='halo';this.note('Snow halo · catching snow');}
+      const embrace=bodyWinterEmbrace(p,aspect);
+      if(embrace){
+        this.hugReleaseSince=null;
+        if(this.stable('halo',now)&&now-this.since>=BODY_CONFIG.embraceHoldMs){
+          if(this.hugArmed){this.hugArmed=false;this.latched='halo';this.lastSpecial=now;this.note('Winter embrace · snow halo');}
+          if(this.latched==='halo')this.haloUntil=now+1200;
         }
         return true;
       }
+      const chest=(p[11].y+p[12].y)/2;
+      const resting=[15,16].every(i=>p[i].y>chest+shoulder*.95);
+      const spread=Math.abs(p[15].x-p[16].x)*aspect>shoulder*1.65;
+      if(resting||spread){
+        if(this.hugReleaseSince===null)this.hugReleaseSince=now;
+        if(now-this.hugReleaseSince>=500)this.hugArmed=true;
+      }else this.hugReleaseSince=null;
       const ratio=Math.abs(p[15].x-p[16].x)*aspect/shoulder;
       const midY=(p[11].y+p[12].y)/2;
       const nearChest=[15,16].every(i=>Math.abs(p[i].y-midY)<shoulder*.9);
@@ -1070,16 +1104,12 @@ class BodyInteractions {
       return !!name&&now-this.since>=BODY_CONFIG.holdMs&&hands.length===2&&hands.every(h=>handPose(h).gesture==='Open_Palm');
     }
     if(s.scene==='snowfall'){
-      const left=p[11].x<p[12].x?p[11]:p[12],right=left===p[11]?p[12]:p[11];
-      let lean=(right.y-left.y)/shoulder;
-      if([23,24].every(i=>this.point(p,i))){
-        const sx=(p[11].x+p[12].x)/2,hx=(p[23].x+p[24].x)/2;
-        lean+=(sx-hx)*aspect/shoulder*.7;
-      }
-      this.wind=mix(this.wind,Math.abs(lean)<.07?0:clamp(lean*2.5,-1,1),.18);
+      const lean=bodyLean(p,aspect)-this.neutralLean;
+      const target=Math.abs(lean)<.025?0:clamp(Math.sign(lean)*(Math.abs(lean)-.025)*5.5,-1,1);
+      this.wind=mix(this.wind,target,.28);
       s.bodyWind=this.wind;
-      if(s.vortex&&Math.abs(this.wind)>.08){s.vortexX=clamp((p[11].x+p[12].x)/2+this.wind*.16,.12,.88);}
-      if(Math.abs(this.wind)>.14)this.note(this.wind<0?'Body wind · left':'Body wind · right');
+      if(s.vortex&&Math.abs(this.wind)>.08)s.vortexX=clamp((p[11].x+p[12].x)/2+this.wind*.29,.10,.90);
+      this.note(Math.abs(this.wind)>.10?(this.wind<0?'Body wind · left':'Body wind · right'):'Body wind · calm');
       return false;
     }
     if(s.scene!=='sprawl')return false;
@@ -1114,6 +1144,7 @@ class BodyInteractions {
     this.lastSpecial=now;
     if(this.latched!==special||sprawl.effect!==special){
       this.latched=special;sprawl.selectEffect(special,true);sprawl.active=++sprawl.group;
+      if(special==='curtain')sprawl.startFrostCover(hands.map(h=>h.points[8]));
       const origins=special==='curtain'?hands.map(h=>h.points[8]):[crossOrigin];
       for(const origin of origins){
         const q=sprawl.world(origin);
@@ -1125,9 +1156,10 @@ class BodyInteractions {
         for(const offset of [-.16,0,.16])sprawl.tips.push({x:q.x,y:q.y,a:a+offset,age:0,group:sprawl.active,depth:0});
       });
     }
+    if(special==='curtain')sprawl.tips=[];
     sprawl.inputSource='body';sprawl.drive=.9;sprawl.turn=0;sprawl.paused=false;
     this.note(special==='curtain'?'Frost curtain · two fingers down':'Crossed crystals · arms recognised');
-    sprawl.notice(special==='curtain'?'A curtain of frost':'Crystals, intertwined','Hold to grow · Change gesture to switch');
+    sprawl.notice(special==='curtain'?'Frost across the whole window':'Crystals, intertwined','Hold to spread · Change gesture to switch');
     return true;
   }
 }
@@ -1142,7 +1174,7 @@ const bodyInteractions=new BodyInteractions();
   label.style.cssText='display:block;width:100%;line-height:1.5';panel.append(label);cameraButton.insertAdjacentElement('afterend',panel);bodyInteractions.label=label;
   toggle.addEventListener('click',()=>{bodyInteractions.enabled=!bodyInteractions.enabled;bodyInteractions.stop();toggle.textContent=bodyInteractions.enabled?'Body on':'Body off';toggle.setAttribute('aria-pressed',String(bodyInteractions.enabled));});
   calibrate.addEventListener('click',()=>{bodyInteractions.reset();bodyInteractions.failed=false;bodyInteractions.note('Relax shoulders · keep head and shoulders visible');});
-  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; hold one relaxed hand palm-up near your chest, with the other arm resting down, for about one second to reveal a snowflake halo. Snowfall: lean to guide wind; lift shoulders briefly for snow, then relax to reset. Sprawl: point both index fingers down for a frost curtain; cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
+  const guide=document.createElement('p');guide.style.cssText='font:14px/1.8 system-ui;max-width:50ch';guide.textContent='BODY MOVEMENT — Bloom: open arms to scatter, bring arms in to gather; cross your arms and rest your hands below the opposite shoulders for one second to reveal a snowflake halo; lower or spread your arms before repeating. Snowfall: lean gently left or right for stronger directional wind. Sprawl: point both index fingers down and hold to spread frost across the entire page; cross forearms at chest height for crossed crystals. Fingers may stay relaxed. Keep head, shoulders and elbows visible. Relax shoulders during calibration.';
   dialog.append(guide);
 }
 // BODY_INTERACTION_END
